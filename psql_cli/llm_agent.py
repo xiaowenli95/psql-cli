@@ -20,28 +20,37 @@ class LLMAgent:
         self.db_reader = db_reader
         self.conversation_history: List[Dict[str, str]] = []
 
-    def _build_system_prompt(self, schema_info: List[Dict[str, Any]]) -> str:
-        """Build system prompt with database schema information."""
-        # Group schema by table
-        tables = {}
-        for col in schema_info:
-            table = col['table_name']
-            if table not in tables:
-                tables[table] = []
-            tables[table].append(col)
-
+    def _build_system_prompt(self, table_names: List[str], detailed_schemas: Dict[str, List[Dict[str, Any]]] = None) -> str:
+        """Build system prompt with database schema information.
+        
+        Args:
+            table_names: List of table names available in the database
+            detailed_schemas: Optional dict mapping table names to their column information
+        """
         schema_text = "Database Schema:\n\n"
-        for table_name, columns in tables.items():
-            schema_text += f"Table: {table_name}\n"
-            for col in columns:
-                nullable = "NULL" if col['is_nullable'] == 'YES' else "NOT NULL"
-                schema_text += f"  - {col['column_name']}: {col['data_type']} {nullable}\n"
-            schema_text += "\n"
+        schema_text += "Available tables:\n"
+        for table_name in table_names:
+            schema_text += f"  - {table_name}\n"
+        schema_text += "\n"
+        
+        # If detailed schemas are provided, include them
+        if detailed_schemas:
+            schema_text += "Detailed table schemas:\n\n"
+            for table_name, columns in detailed_schemas.items():
+                schema_text += f"Table: {table_name}\n"
+                for col in columns:
+                    nullable = "NULL" if col['is_nullable'] == 'YES' else "NOT NULL"
+                    schema_text += f"  - {col['column_name']}: {col['data_type']} {nullable}\n"
+                schema_text += "\n"
 
+        schema_request_note = ""
+        if not detailed_schemas:
+            schema_request_note = """\nNOTE: You only see table names above. If you need to see the columns of specific tables before writing a query, you can request their schemas.
+"""
+        
         system_prompt = f"""You are a helpful PostgreSQL database assistant.
 
-{schema_text}
-
+{schema_text}{schema_request_note}
 Your job is to:
 1. Understand user questions and requests about the data
 2. Generate appropriate SQL queries to fulfill any request the user makes
@@ -63,9 +72,12 @@ When responding:
 IMPORTANT: Always respond with valid JSON in this format:
 {{
     "thought": "Your reasoning about what query to run or action to take",
+    "request_schema": ["table1", "table2"] or null (if you need to see column details for specific tables),
     "query": "SQL query to execute (or null if no query needed)",
     "response": "Your natural language response to the user"
 }}
+
+If you need schema details, set request_schema to the list of table names and leave query as null. You'll get the schemas and can then generate the query.
 """
         return system_prompt
 
@@ -104,9 +116,9 @@ IMPORTANT: Always respond with valid JSON in this format:
         Returns:
             Dictionary with query results and response
         """
-        # Get schema information
-        schema_info = self.db_reader.get_table_schema()
-        system_prompt = self._build_system_prompt(schema_info)
+        # Get list of all tables
+        table_names = self.db_reader.get_all_tables()
+        system_prompt = self._build_system_prompt(table_names)
 
         # Build conversation context
         context = ""
@@ -126,6 +138,35 @@ IMPORTANT: Always respond with valid JSON in this format:
                 "error": "Failed to parse LLM response",
                 "response": "I'm having trouble understanding how to help. Could you rephrase your question?"
             }
+        
+        # Check if LLM is requesting schema details
+        if response_data.get("request_schema"):
+            requested_tables = response_data["request_schema"]
+            logger.info(f"LLM requesting schema for tables: {requested_tables}")
+            
+            # Fetch detailed schemas for requested tables
+            detailed_schemas = {}
+            for table in requested_tables:
+                schema = self.db_reader.get_table_schema(table)
+                if schema:
+                    detailed_schemas[table] = schema
+            
+            # Rebuild system prompt with detailed schemas
+            system_prompt = self._build_system_prompt(table_names, detailed_schemas)
+            
+            # Make another LLM call with the detailed schema
+            full_prompt = f"{context}User: {user_input}\n\nYou now have the detailed schemas for: {', '.join(requested_tables)}. Please generate the query.\n\nPlease respond with JSON."
+            
+            try:
+                llm_response = self._call_ollama(full_prompt, system_prompt)
+                response_data = json.loads(llm_response)
+            except (json.JSONDecodeError, KeyError) as e:
+                logger.error(f"Failed to parse LLM response on second call: {e}")
+                return {
+                    "success": False,
+                    "error": "Failed to parse LLM response",
+                    "response": "I'm having trouble understanding how to help. Could you rephrase your question?"
+                }
 
         # Store in conversation history
         self.conversation_history.append({
