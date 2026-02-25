@@ -183,7 +183,7 @@ class DatabaseReader:
                 is_nullable,
                 column_default
             FROM information_schema.columns
-            WHERE table_schema = '{self.config.schema}'"
+            WHERE table_schema = {self.config.schema}"
         """
         
         if table_name:
@@ -198,7 +198,7 @@ class DatabaseReader:
         query = f"""
             SELECT table_name
             FROM information_schema.tables
-            WHERE table_schema = '{self.config.schema}'
+            WHERE table_schema = {self.config.schema}
             AND table_type = 'BASE TABLE'
             ORDER BY table_name
         """
