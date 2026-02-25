@@ -175,7 +175,7 @@ class DatabaseReader:
         Returns:
             List of dictionaries containing schema information
         """
-        query = """
+        query = f"""
             SELECT 
                 table_name,
                 column_name,
@@ -183,7 +183,7 @@ class DatabaseReader:
                 is_nullable,
                 column_default
             FROM information_schema.columns
-            WHERE table_schema = 'public'
+            WHERE table_schema = '{self.config.schema}'"
         """
         
         if table_name:
@@ -195,10 +195,10 @@ class DatabaseReader:
 
     def get_all_tables(self) -> List[str]:
         """Get list of all tables in the database."""
-        query = """
+        query = f"""
             SELECT table_name
             FROM information_schema.tables
-            WHERE table_schema = 'public'
+            WHERE table_schema = '{self.config.schema}'
             AND table_type = 'BASE TABLE'
             ORDER BY table_name
         """

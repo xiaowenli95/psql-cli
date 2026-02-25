@@ -154,6 +154,7 @@ POSTGRES_PORT=5432
 POSTGRES_DB=testdb
 POSTGRES_USER=readonly_user
 POSTGRES_PASSWORD=readonly_pass
+POSTGRES_SCHEMA=public
 
 # Ollama Configuration
 OLLAMA_HOST=http://localhost:11434

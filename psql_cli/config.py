@@ -19,6 +19,7 @@ class DatabaseConfig:
     database: str = os.getenv("POSTGRES_DB", "testdb")
     user: str = os.getenv("POSTGRES_USER", "readonly_user")
     password: str = os.getenv("POSTGRES_PASSWORD", "readonly_pass")
+    schema: str = os.getenv("POSTGRES_SCHEMA", "public")
 
     @property
     def connection_string(self) -> str:
