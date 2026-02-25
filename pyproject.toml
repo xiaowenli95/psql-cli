@@ -1,0 +1,21 @@
+[project]
+name = "psql-cli"
+version = "0.1.0"
+description = "PostgreSQL CLI with Ollama LLM integration for natural language queries"
+authors = [
+    {name = "Xiaowen"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+psql-cli = "psql_cli.cli:main"
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
