@@ -20,14 +20,15 @@ class LLMAgent:
         self.db_reader = db_reader
         self.conversation_history: List[Dict[str, str]] = []
 
-    def _build_system_prompt(self, table_names: List[str], detailed_schemas: Dict[str, List[Dict[str, Any]]] = None) -> str:
+    def _build_system_prompt(self, schema_name: str, table_names: List[str], detailed_schemas: Dict[str, List[Dict[str, Any]]] = None) -> str:
         """Build system prompt with database schema information.
         
         Args:
+            schema_name: Database schema name to use in queries
             table_names: List of table names available in the database
             detailed_schemas: Optional dict mapping table names to their column information
         """
-        schema_text = "Database Schema:\n\n"
+        schema_text = f"Database Schema: {schema_name}\n\n"
         schema_text += "Available tables:\n"
         for table_name in table_names:
             schema_text += f"  - {table_name}\n"
@@ -58,6 +59,9 @@ Your job is to:
 
 When generating SQL:
 - Generate any valid PostgreSQL query that the user requests (SELECT, INSERT, UPDATE, DELETE, etc.)
+- CRITICAL: ALL table references MUST use double-quoted schema.table format: "{schema_name}"."table_name"
+- Example: SELECT * FROM "{schema_name}"."users" WHERE id = 1
+- Example: SELECT u.name, o.total FROM "{schema_name}"."users" u JOIN "{schema_name}"."orders" o ON u.id = o.user_id
 - Be precise and use proper PostgreSQL syntax
 - Include appropriate WHERE, JOIN, GROUP BY, ORDER BY clauses as needed
 - Use LIMIT to avoid overwhelming output when appropriate
@@ -118,7 +122,8 @@ If you need schema details, set request_schema to the list of table names and le
         """
         # Get list of all tables
         table_names = self.db_reader.get_all_tables()
-        system_prompt = self._build_system_prompt(table_names)
+        schema_name = self.db_reader.config.schema
+        system_prompt = self._build_system_prompt(schema_name, table_names)
 
         # Build conversation context
         context = ""
@@ -152,7 +157,7 @@ If you need schema details, set request_schema to the list of table names and le
                     detailed_schemas[table] = schema
             
             # Rebuild system prompt with detailed schemas
-            system_prompt = self._build_system_prompt(table_names, detailed_schemas)
+            system_prompt = self._build_system_prompt(schema_name, table_names, detailed_schemas)
             
             # Make another LLM call with the detailed schema
             full_prompt = f"{context}User: {user_input}\n\nYou now have the detailed schemas for: {', '.join(requested_tables)}. Please generate the query.\n\nPlease respond with JSON."
